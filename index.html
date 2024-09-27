@@ -6,15 +6,313 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="script-src 'self' 'unsafe-eval'; worker-src 'self' 'unsafe-eval'; img-src 'self' data:;"
+      content="script-src 'self' https://cdn.jsdelivr.net; worker-src 'self' 'unsafe-eval'; img-src 'self' data:;"
     />
 
     <title>MandelBrot Concurrent Rendering</title>
+
     <link rel="stylesheet" href="index.css" />
   </head>
   <body>
-    <header id="page-title">MandelBrot Concurrent Rendering</header>
-    <canvas id="main-canvas" width="500" height="500"></canvas>
-    <script src="main.js" defer></script>
+    <div class="main">
+      <header id="page-title">Concurrency in JavaScript</header>
+      <h1 id="page-subtitle">MandelBrot Concurrent Rendering</h1>
+      <div class="main-panel">
+        <div class="config-bar">
+          <h2>Configuration:</h2>
+          <div class="sub-config">
+            <div class="subconfig-caption">
+              <h3>Blocksize:</h3>
+              <div class="config-input">
+                <button id="blocksize-decrement">-</button>
+                <h3 id="num-blocksize">1</h3>
+                <button id="blocksize-increment">+</button>
+              </div>
+            </div>
+            <div class="tasks-created">
+              <p>Tasks Created:</p>
+              <p id="tasks-created"></p>
+            </div>
+
+            <div class="inner-box">
+              <div class="inner-spectrum" id="inner-spectrum-1">
+                <div class="adjustment-dial" id="adjustment-dial-1"></div>
+              </div>
+            </div>
+          </div>
+          <div class="sub-config">
+            <div class="subconfig-caption">
+              <h3>Mandelbrot size:</h3>
+              <div class="config-input">
+                <button id="mandelbrot-decrement">-</button>
+                <h3 id="mandelbrot-size">1</h3>
+                <button id="mandelbrot-increment">+</button>
+              </div>
+            </div>
+
+            <div class="inner-box">
+              <div class="inner-spectrum" id="inner-spectrum-2">
+                <div class="adjustment-dial" id="adjustment-dial-2"></div>
+              </div>
+            </div>
+          </div>
+          <div class="webworkers-input">
+            <div>
+              <label for="input-1">Number of Web Workers to Create:</label>
+              <input
+                id="input-1"
+                type="number"
+                name="webworkers"
+                min="1"
+                max="100"
+                placeholder="max: 100"
+              />
+            </div>
+            <div>
+              <label for="input-2">Number of Web Workers to Utilise:</label>
+              <input
+                id="input-2"
+                type="number"
+                name="webworkers"
+                min="1"
+                max="100"
+                placeholder="max: machine cpu cores - 1"
+              />
+            </div>
+            <div class="max-cpu">
+              <h2>CPU cores available:</h2>
+              <h2 id="max-cpu"></h2>
+            </div>
+          </div>
+          <div class="bottom-config">
+            <div class="color-switches">
+              <button class="color-switch" id="colorful">Colorful</button>
+              <button class="color-switch" id="monotone">Monotone</button>
+            </div>
+            <div id="render-time">
+              <h3 id="render-time-h3">Render Time:</h3>
+              <h3 id="render-time-value">100 ms</h3>
+            </div>
+          </div>
+        </div>
+
+        <canvas id="main-canvas" width="500" height="500"></canvas>
+      </div>
+    </div>
+
+    <div class="memory-graph">
+      <header class="memory-graph-header">
+        Memory Usage as per Configuration Settings:
+      </header>
+      <canvas id="memory-graph-chart"></canvas>
+    </div>
+    <div class="explanation">
+      <h2>Explanation:</h2>
+      <p>
+        The above canvas rendering process concurrently processes mathematical
+        calculations in order to display the Mandelbrot pattern seen above. The
+        smaller the Mandelbrot size, the greater the number of iterations in the
+        calculations, and the more detailed the pattern is. More information
+        regarding the Mandelbrot Set can be found via
+        <a href="https://en.wikipedia.org/wiki/Mandelbrot_set">
+          https://en.wikipedia.org/wiki/Mandelbrot_set </a
+        >.<br /><br />
+
+        The purpose of this expo is to showcase the effectiveness of concurrency
+        in JavaScript, as it is not a natively concurrent language and lacks the
+        support for concurrent execution of code. However, a relatively recent
+        addition to the language was the ability to create web
+        workers—thread-like scripts that can run on CPU cores of a client's
+        local machine, thereby transferring computational effort from the main
+        thread that runs the browser, allowing the website to maintain
+        responsiveness.<br /><br />
+        The canvas element is also offloaded to a web worker, which is
+        responsible for drawing on the canvas. It is notable that the canvas
+        element is one of the few HTML elements that has an API that makes the
+        transfer of control to the web worker possible, allowing the rendering
+        process to be offloaded to the webworker. This is noteworthy because a
+        huge downside to web workers in JavaScript is that they cannot
+        manipulate the DOM. The canvas is 500px by 500px, therefore offering
+        250,000 1-by-1 blocks. Tasks created can be calculated by 250,000 blocks
+        divided by block size.<br /><br />
+        These "tasks"— blocks that need to be rendered on the canvas—are split
+        amongst web workers for execution.<br /><br />
+        With this in mind, the above control panel allows one to choose how many
+        web workers to create and how many to utilize in the actual processing
+        of the tasks created. This is made possible by a custom API defined
+        below in the WorkerPool class, which makes the use of web workers in
+        JavaScript slightly easier to configure.
+        <br /><br />
+        Ultimately, the conclusions that can be drawn about concurrency in
+        JavaScript are that it cannot be considered to be anywhere near the
+        efficiency of concurrency in most other langauges like python or java.
+        Web workers are a make shift addition to the language that offer the
+        ability of parallel processing, which can be useful, especially in
+        performing background task on websites like data fetching, however not
+        for tasks that are speed oriented, as an increase in the number of web
+        workers does not necessairly correlate to faster processing due to the
+        time overhead of sub workers communicating with the main thread.
+        <br /><br />
+        In essence, web workers are best suited for tasks that can be completed
+        independently, without constant switching or interaction with other
+        tasks, and are useful for performing background operations, particularly
+        in contexts where responsiveness is key.
+      </p>
+
+      <div class="explanation-code">
+        <h3>Part 1: Class Declaration and Constructor</h3>
+        <pre id="code">
+          <code class="code-style" style="
+            background-color: #eee;
+            border: 1px solid #999;
+            font-size: 18px;
+            display: block;
+            padding-left: -60px;
+            text-align: left;
+            overflow-x: auto;">
+      class WorkerPool {
+        #availableWorkers = [];
+        #activeWorkers = [];
+        #idleWorkers = [];
+        #taskData = [];
+        #numWorkers;
+        #workerScript;
+        #localCores_CPU = navigator.hardwareConcurrency - 1;
+      
+        constructor(workerScript, numWorkers) {
+          if (numWorkers &lt; 1)
+            throw new Error("Illegal Argument Exception: Please enter a value greater than zero.");
+          this.#workerScript = workerScript;
+          this.#numWorkers = numWorkers;
+          this.#initWorkers();
+        }
+          </code>
+        </pre>
+
+        <h3>Part 2: Initialize Workers</h3>
+        <pre id="code">
+          <code class="code-style" style="
+            background-color: #eee;
+            border: 1px solid #999;
+            font-size: 18px;
+            display: block;
+            padding: 20px;
+            text-align: left;
+            overflow-x: auto;">
+      #initWorkers() {
+        const onComplete = (workerStatus, worker) => {
+          if (workerStatus === "done" || workerStatus === "error") {
+            this.#idleWorkers.push(worker);
+          }
+        };
+      
+        for (let i = 0; i &lt; this.#numWorkers; i++) {
+          const worker = new Worker(this.#workerScript);
+          worker.onmessage = function (event) {
+            const { status } = event.data;
+            onComplete(status, worker);
+          };
+          worker.onerror = function (error) {
+            const { status, cause } = error.data;
+            console.log("Error message from worker: " + cause);
+            onComplete(status, worker);
+          };
+          this.#availableWorkers.push(worker);
+        }
+      }
+          </code>
+        </pre>
+
+        <h3>Part 3: Initialize and Launch Tasks</h3>
+        <pre id="code">
+          <code class="code-style" style="
+            background-color: #eee;
+            border: 1px solid #999;
+            font-size: 18px;
+            display: block;
+            padding: 20px;
+            text-align: left;
+            overflow-x: auto;">
+      #initTasks(taskData) {
+        this.#taskData.push(taskData);
+      }
+      
+      #launchWorkers(launchNumWorkers = this.#numWorkers) {
+        for (let i = 0; i &lt; launchNumWorkers; i++) {
+          const launch = this.#availableWorkers[i];
+          this.#activeWorkers.push(launch);
+        }
+      }
+      
+      #launchMachineMaxWorkers() {
+        this.#launchWorkers(this.#localCores_CPU);
+      }
+          </code>
+        </pre>
+
+        <h3>Part 4: Run Tasks and Termination</h3>
+        <pre id="code">
+          <code class="code-style" style="
+            background-color: #eee;
+            border: 1px solid #999;
+            font-size: 18px;
+            display: block;
+            padding: 20px;
+            text-align: left;
+            overflow-x: auto;">
+      #runTasks() {
+        const activeWorkers = this.#activeWorkers;
+        const idleWorkers = this.#idleWorkers;
+        const taskData = this.#taskData;
+        const numTasks = this.#taskData.length;
+        const numActiveWorkers = this.#activeWorkers.length;
+      
+        function addTasks(workers, integer) {
+          for (let i = 0; i &lt; integer; i++) {
+            try {
+              workers[i].postMessage(taskData.pop());
+            } catch (error) {
+              console.error(`Error posting task to worker ${i}: `, error);
+              taskData.push(task); // push task back to task queue
+            }
+          }
+        }
+      
+        const intervalId = setInterval(() => {
+          if (taskData.length != 0 && idleWorkers.length != 0)
+            addTasks(idleWorkers, idleWorkers.length);
+          if (taskData.length === 0 && idleWorkers.length === numActiveWorkers) {
+            this.#terminateAll();
+            clearInterval(intervalId);
+          }
+        }, 100);
+      
+        if (numTasks &gt; numActiveWorkers) {
+          addTasks(activeWorkers, numActiveWorkers);
+          intervalId();
+        } else {
+          addTasks(activeWorkers, numTasks);
+          intervalId();
+        }
+      }
+      
+      #terminateAll() {
+        this.#availableWorkers.forEach((worker) => worker.terminate());
+        this.#availableWorkers = [];
+        this.#activeWorkers = [];
+        this.#idleWorkers = [];
+        this.#taskData = [];
+      }
+          </code>
+        </pre>
+      </div>
+    </div>
+    <h1 id="signature">By Damen Savvi</h1>
+    <!-- Load your custom scripts -->
+    <script type="module" src="main.js" defer></script>
+    <script type="module" src="adjustmentDial.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- Add defer to ensure DOM is loaded -->
   </body>
 </html>
